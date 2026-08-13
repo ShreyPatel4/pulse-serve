@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+.pytest_cache/
+.ruff_cache/
+dump.rdb
+appendonly*.aof
+appendonlydir/
+models/current.joblib
+models/manifest.json
+models/baseline_route_hour.json

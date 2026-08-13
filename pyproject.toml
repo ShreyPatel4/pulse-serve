@@ -1,0 +1,40 @@
+[project]
+name = "pulse-serve"
+version = "0.1.0"
+description = "Self-hosted serving layer for Pulse (P(delay>180s) per route/direction/stop/trip): FastAPI + Redis queue + Postgres results, syllabus Project 2, self-hosted equivalents documented"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "joblib>=1.4",
+    "redis>=5.1",
+    "psycopg[binary]>=3.2",
+    "prometheus-client>=0.21",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pulse_serve"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
