@@ -195,11 +195,15 @@ however many predictions actually get served):
 0.4608 kWh * $0.31/kWh = $0.143/day
 ```
 
-| assumed daily volume | cost per 1,000 predictions |
-|---|---|
-| 1,000/day | $0.143 |
-| 10,000/day | $0.0143 |
-| 100,000/day | $0.00143 |
+```
+cost_per_1k = cost_per_day / (daily_volume / 1000)
+```
+
+| assumed daily volume | units of 1,000 predictions/day | cost per 1,000 predictions |
+|---|---|---|
+| 1,000/day | 1 | $0.143 / 1 = $0.143 |
+| 10,000/day | 10 | $0.143 / 10 = $0.0143 |
+| 100,000/day | 100 | $0.143 / 100 = $0.00143 |
 
 No real traffic exists yet (pre-launch), so the daily-volume column is a
 labeled assumption, not a measurement -- pick the row that matches an
@@ -207,12 +211,12 @@ actual expected volume when one exists.
 
 **Cost-per-1k-predictions, marginal-compute basis** (upper bound, for
 comparison): attributing the *entire* measured 19.2W to just the p50
-0.53ms request duration, even though load testing showed no measurable
+0.525ms request duration, even though load testing showed no measurable
 power delta --
 
 ```
-19.2 W/1000 * (0.00053 h / 3600 * 1000) ... = ~2.8e-9 kWh/prediction
-2.8e-9 kWh * $0.31/kWh * 1000 = ~$0.00000087 per 1,000 predictions
+0.0192 kW x (0.000525 s / 3600 s/h) = 2.8e-9 kWh/prediction
+2.8e-9 kWh x $0.31/kWh x 1,000 predictions = ~$0.00000087 per 1,000 predictions
 ```
 
 Six orders of magnitude below the availability-basis number. The gap is the
