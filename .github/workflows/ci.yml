@@ -48,10 +48,14 @@ jobs:
       PULSE_SERVE_REDIS_URL: redis://localhost:6379/0
 
     steps:
-      - uses: actions/checkout@v4
+      # SHA-pinned, not a moving major-version tag -- verified against
+      # `gh api repos/<owner>/<repo>/releases` at the time this was written
+      # (2026-08-12; actions/checkout was at v7.0.1, astral-sh/setup-uv at
+      # v10.0.0, both released the same day this build happened).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
         with:
           python-version: "3.13"
           enable-cache: true
