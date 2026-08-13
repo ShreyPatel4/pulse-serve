@@ -1,0 +1,7 @@
+{
+  "semver": "0.1.0",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "trained_at": "2026-08-20T00:00:00Z",
+  "data_window": "2026-08-13..2026-08-20",
+  "_note": "example only -- rename to manifest.json alongside a real current.joblib, and use the real file's sha256, not this placeholder"
+}

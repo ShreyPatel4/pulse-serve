@@ -1,0 +1,6 @@
+{
+  "_note": "example only -- rename to baseline_route_hour.json to activate this baseline strategy instead of always-on-time. Values below are illustrative placeholders, not fit to real pulse-mbta data.",
+  "1": {"7": 0.18, "8": 0.31, "9": 0.22, "16": 0.28, "17": 0.35, "18": 0.29},
+  "15": {"7": 0.14, "8": 0.24, "17": 0.27},
+  "_all": 0.15
+}

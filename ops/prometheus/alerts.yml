@@ -1,0 +1,64 @@
+# Alert rules -- this is CloudWatch Alarms' self-hosted equivalent (see
+# docs/design.md's AWS re-target table). Rules fire into Prometheus's
+# Alertmanager; actual delivery (Resend email, etc) is a deployment
+# placeholder -- see docs/design.md's deployment-placeholders section. The
+# rules themselves are real, not placeholders.
+
+groups:
+  - name: pulse-serve
+    rules:
+      - alert: PulseServeApiDown
+        expr: up{job="pulse-serve-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "pulse-serve api target is down"
+          description: "Prometheus has not been able to scrape the api process for 1m. /v1/predict is unreachable."
+
+      - alert: PulseServeWorkerDown
+        expr: up{job="pulse-serve-worker"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "pulse-serve worker target is down"
+          description: "Async predictions will queue but never complete while the worker is down. Sync /v1/predict is unaffected."
+
+      - alert: PulseServeModelIntegrityFailed
+        expr: pulse_serve_model_integrity_ok == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "pulse-serve is serving BASELINE due to a model integrity failure, not a clean no-model-file state"
+          description: >
+            current.joblib and manifest.json disagree (sha256 mismatch, one
+            file missing its counterpart, a bad manifest, or an unpickle
+            failure) -- see pulse_serve/model.py's module docstring on the
+            joblib trap. Every response is still safe (BASELINE never fakes
+            a trained model) but this is not the expected steady state once
+            a real model has been deployed.
+
+      - alert: PulseServeQueueDepthSustainedHigh
+        expr: pulse_serve_queue_depth > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "pulse-serve pending queue depth > 100 for 2m"
+          description: "The worker isn't keeping up with /v1/predict/async enqueue rate, or has stopped consuming. Check PulseServeWorkerDown first."
+
+      - alert: PulseServeSyncLatencyP95HighAlert
+        # Threshold matches the p95 SLO stated in docs/design.md -- keep them
+        # in sync if either changes.
+        expr: >
+          histogram_quantile(0.95,
+            sum(rate(pulse_serve_request_latency_seconds_bucket{endpoint="/v1/predict"}[5m])) by (le)
+          ) > 0.25
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 sync /v1/predict latency over 250ms for 5m"
+          description: "See docs/design.md's SLO section for the stated p95 target and how it was measured."

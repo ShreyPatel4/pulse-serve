@@ -43,7 +43,16 @@ from pulse_serve import config
 
 
 def connect(url: str | None = None) -> redis.Redis:
-    return redis.Redis.from_url(url or config.redis_url(), decode_responses=True)
+    """socket_timeout=None (block at the socket level for however long a
+    response takes) -- found by actually running the worker: redis-py 8.x
+    defaults socket_timeout to 5s, which races reserve()'s own 5s
+    BRPOPLPUSH server-side blocking wait and intermittently raises "Timeout
+    reading from socket" on the client side whenever no job arrives in that
+    window. The main loop already tolerates a RedisError here (logs, sleeps,
+    retries), so this wasn't fatal, but it's log noise on every idle cycle
+    in normal operation, not a real fault -- BRPOPLPUSH's own `timeout`
+    argument is what should bound the wait, not the client socket."""
+    return redis.Redis.from_url(url or config.redis_url(), decode_responses=True, socket_timeout=None)
 
 
 def enqueue(client: redis.Redis, payload: dict[str, Any]) -> None:

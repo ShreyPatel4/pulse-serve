@@ -1,0 +1,139 @@
+# Full self-hosted stack: api, worker, redis (queue), postgres (results +
+# feature migrations), prometheus (metrics), grafana (dashboards). `docker
+# compose up` should bring up everything end to end -- see README.md for
+# the honest state of what's been verified vs. what's Dockerfile-lint-clean
+# only (the Docker daemon was not running on the dev machine this was built
+# on; see docs/design.md's verification note).
+#
+# Host ports for postgres/redis are remapped (5433, 6380) so this doesn't
+# collide with a host-installed Postgres/Redis on the default ports --
+# internal service-to-service traffic inside the compose network still uses
+# 5432/6379 regardless.
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pulse_serve
+      POSTGRES_USER: pulse
+      POSTGRES_PASSWORD: pulse-local-dev-placeholder
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pulse -d pulse_serve"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # --save "" --appendonly no: this queue is meant to hold seconds-to-
+    # minutes of transient work, not a durable log -- see
+    # pulse_serve/queue.py's module docstring for what that means for
+    # delivery semantics if redis itself restarts.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: ["python", "scripts/migrate.py"]
+    environment:
+      PULSE_SERVE_DSN: postgresql://pulse:pulse-local-dev-placeholder@postgres:5432/pulse_serve
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: ["uvicorn", "pulse_serve.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      PULSE_SERVE_DSN: postgresql://pulse:pulse-local-dev-placeholder@postgres:5432/pulse_serve
+      PULSE_SERVE_REDIS_URL: redis://redis:6379/0
+      PULSE_API_KEYS: ${PULSE_API_KEYS:-local-dev-placeholder-key}
+    volumes:
+      # Real model files are dropped on the host and picked up here without
+      # a rebuild -- see models/README.md for the contract.
+      - ./models:/app/models:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: ["python", "-m", "pulse_serve.worker"]
+    restart: unless-stopped
+    # Exactly one replica -- see pulse_serve/queue.py's module docstring for
+    # why reclaim_stale()'s startup-only reclaim is only safe single-worker.
+    # `docker compose up --scale worker=2` would silently violate that.
+    # restart: unless-stopped means a crashed worker restarts and its first
+    # act is reclaim_stale() -- that's the crash-recovery path in practice.
+    ports:
+      - "9200:9200"
+    environment:
+      PULSE_SERVE_DSN: postgresql://pulse:pulse-local-dev-placeholder@postgres:5432/pulse_serve
+      PULSE_SERVE_REDIS_URL: redis://redis:6379/0
+      PULSE_SERVE_WORKER_METRICS_PORT: "9200"
+    volumes:
+      - ./models:/app/models:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+      - worker
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      # Placeholder -- change before any non-local use. See docs/design.md's
+      # deployment-placeholders section.
+      GF_SECURITY_ADMIN_PASSWORD: local-dev-placeholder
+    volumes:
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:

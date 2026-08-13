@@ -1,0 +1,73 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # Real Postgres + Redis service containers -- not mocks -- so every test
+    # actually runs here, including the ones that skip locally when no redis
+    # is reachable (see tests/conftest.py's redis_client fixture) and the
+    # ones that always require Postgres (same convention as pulse-mbta).
+    # This is the "CI blocks your own bad push" gate: pytest failing fails
+    # this job, which fails the workflow.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pulse
+          POSTGRES_PASSWORD: pulse
+          POSTGRES_DB: pulse_serve
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # A TCP+password DSN, not the Unix-socket default -- tests/conftest.py
+      # derives its scratch-database DSN from this one (swapping only
+      # dbname), so it works unchanged here and on a dev laptop.
+      PULSE_SERVE_DSN: postgresql://pulse:pulse@localhost:5432/pulse_serve
+      PULSE_SERVE_REDIS_URL: redis://localhost:6379/0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install dependencies (locked)
+        # --locked: fail instead of silently re-resolving if uv.lock drifted
+        # from pyproject.toml. Plain `uv sync` includes the dev dependency
+        # group by default (pytest/ruff/httpx) -- same command verified
+        # locally throughout this build.
+        run: uv sync --locked
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Test (pytest)
+        run: uv run pytest -v
+
+      - name: Docker build (no push)
+        run: docker build -f docker/Dockerfile -t pulse-serve:ci .
